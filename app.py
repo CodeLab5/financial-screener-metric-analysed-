@@ -36,44 +36,41 @@ if ticker:
         if ticker in ticker_corrections:
             ticker = ticker_corrections[ticker]
 
-        # Step B: Download data immediately
+        # Step B: Download data immediately to ensure network connection is established
         data = yf.download(tickers=ticker, period=period, progress=False)
         
         if data.empty:
             raise ValueError(f"No pricing arrays found for '{ticker}'. Verify exchange suffix rules.")
 
-        # Step C: DETECT CURRENCY FIRST (Before flattening data)
-        # Check yfinance's raw internal metadata dictionary securely
+        # Step C: Direct Global Currency Sniffer Engine
         detected_currency = None
-        if hasattr(data, 'metadata') and data.metadata:
-            # For modern yfinance formats
-            if ticker in data.metadata:
-                detected_currency = data.metadata[ticker].get('currency')
-            elif 'currency' in data.metadata:
-                detected_currency = data.metadata.get('currency')
+        try:
+            # Query the live ticker profile directly to fetch the exact currency logged by the local exchange
+            ticker_obj = yf.Ticker(ticker)
+            detected_currency = ticker_obj.fast_info.get('currency', None)
+        except Exception:
+            pass
 
-        # Step D: Safe Suffix Fallback Strategy (If API leaves metadata empty)
+        # Step D: Universal Suffix Backup Plan (If the exchange server experiences a metadata timeout)
         if not detected_currency:
-            if ticker.endswith(".NS") or ticker.endswith(".BO") or ticker in ["^NSEI", "^BSESN"]:
-                detected_currency = "INR"
-            elif ticker.endswith(".L"):
-                detected_currency = "GBP"
-            elif any(ticker.endswith(ext) for ext in [".DE", ".PA", ".AS", ".FR", ".IT"]):
-                detected_currency = "EUR"
-            elif ticker.endswith(".TO") or ticker.endswith(".V"):
-                detected_currency = "CAD"
-            elif ticker.endswith(".AX"):
-                detected_currency = "AUD"
-            elif ticker.endswith(".T"):
-                detected_currency = "JPY"
-            elif ticker.endswith(".KS"):
-                detected_currency = "KRW"
-            elif ticker.endswith(".CS"):
-                detected_currency = "MAD"
-            elif ticker.endswith(".SS") or ticker.endswith(".SZ"):
-                detected_currency = "CNY"
-            else:
-                detected_currency = "USD"
+            suffix_map = {
+                '.NS': 'INR', '.BO': 'INR', '.L': 'GBP', '.DE': 'EUR', 
+                '.PA': 'EUR', '.AS': 'EUR', '.FR': 'EUR', '.IT': 'EUR', 
+                '.TO': 'CAD', '.V': 'CAD', '.AX': 'AUD', '.T': 'JPY', 
+                '.KS': 'KRW', '.CS': 'MAD', '.SS': 'CNY', '.SZ': 'CNY', 
+                '.HK': 'HKD', '.SG': 'SGD', '.MI': 'EUR', '.MC': 'EUR'
+            }
+            for suffix, curr in suffix_map.items():
+                if ticker.endswith(suffix):
+                    detected_currency = curr
+                    break
+            
+            # Default fallback if absolutely no match is found anywhere
+            if not detected_currency:
+                detected_currency = 'USD'
+
+        # Normalize currency string to uppercase
+        detected_currency = str(detected_currency).upper()
 
         # Step E: Flatten MultiIndex columns out safely
         if isinstance(data.columns, pd.MultiIndex):
@@ -85,16 +82,16 @@ if ticker:
         data.columns = [str(col).strip() for col in data.columns]
         data = data.dropna(subset=['Close'])
 
-        # Step F: Universal Currency Map Interface
+        # Step F: Universal Currency Sign Matrix Mapping
         currency_symbols = {
             'USD': '$', 'INR': '₹', 'GBP': '£', 'EUR': '€', 
             'CAD': 'CA$', 'AUD': 'A$', 'JPY': '¥', 'KRW': '₩', 
             'HKD': 'HK$', 'CNY': '元', 'MAD': 'DH ', 'SGD': 'S$', 
             'CHF': 'CHF ', 'NZD': 'NZ$', 'ZAR': 'R ', 'BRL': 'R$'
         }
-        currency_symbol = currency_symbols.get(detected_currency.upper(), f"{detected_currency} ")
+        currency_symbol = currency_symbols.get(detected_currency, f"{detected_currency} ")
 
-        # Step G: Calculate Core Float Pricing Metrics
+        # Step G: Calculate Core Metrics
         current_price = float(data['Close'].iloc[-1])
         initial_price = float(data['Close'].iloc[0])
         price_delta = current_price - initial_price
@@ -103,7 +100,7 @@ if ticker:
         data['SMA_20'] = data['Close'].rolling(window=min(20, len(data))).mean()
 
         # --- VISUALIZATION LAYER ---
-        st.info(f"🪙 **Sovereign Base Currency Identified:** `{detected_currency.upper()}`")
+        st.info(f"🪙 **Sovereign Base Currency Identified:** `{detected_currency}`")
 
         col1, col2, col3 = st.columns(3)
         with col1:
